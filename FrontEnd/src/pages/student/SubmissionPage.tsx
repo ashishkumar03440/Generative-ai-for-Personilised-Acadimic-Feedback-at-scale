@@ -48,13 +48,36 @@ export default function SubmissionPage() {
   const submittedAssignmentIds = new Set(mySubmissions.map(s => s.assignmentId?._id || s.assignmentId));
   const pendingAssignmentsList = assignmentsList.filter(a => !submittedAssignmentIds.has(a._id));
 
+  const isPDF = (file: File) => file.type === "application/pdf";
+  const isValidSize = (file: File) => file.size <= 20 * 1024 * 1024; // 20 MB limit
+
   const handleDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault(); setDragOver(false);
-    setFiles(prev => [...prev, ...Array.from(e.dataTransfer.files)]);
+    const dropped = Array.from(e.dataTransfer.files);
+    
+    const valid = dropped.filter(f => isPDF(f) && isValidSize(f));
+    const oversized = dropped.filter(f => !isValidSize(f));
+    const nonPdfs = dropped.filter(f => !isPDF(f) && isValidSize(f));
+    
+    if (oversized.length > 0) toast.error(`File is larger than 20 MB.`);
+    if (nonPdfs.length > 0) toast.error(`Only PDF files are accepted.`);
+    
+    if (valid.length > 0) setFiles(prev => [...prev, ...valid]);
   }, []);
 
   const handleFileInput = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files) setFiles(prev => [...prev, ...Array.from(e.target.files!)]);
+    if (!e.target.files) return;
+    const selected = Array.from(e.target.files);
+    
+    const valid = selected.filter(f => isPDF(f) && isValidSize(f));
+    const oversized = selected.filter(f => !isValidSize(f));
+    const nonPdfs = selected.filter(f => !isPDF(f) && isValidSize(f));
+
+    if (oversized.length > 0) toast.error(`File is larger than 20 MB.`);
+    if (nonPdfs.length > 0) toast.error(`Only PDF files are accepted.`);
+    
+    if (valid.length > 0) setFiles(prev => [...prev, ...valid]);
+    e.target.value = ""; // Reset
   };
 
   const removeFile = (idx: number) => setFiles(prev => prev.filter((_, i) => i !== idx));
@@ -85,11 +108,14 @@ export default function SubmissionPage() {
         method: "POST",
         body: formData,
       });
-      if (!response.ok) throw new Error("Upload response not OK");
+      if (!response.ok) {
+        throw new Error(`Upload response not OK: ${response.status}`);
+      }
       toast.success("Work submitted! AI grading in progress...");
-    } catch (e) {
+    } catch (e: any) {
       console.error("Upload failed", e);
-      toast.warning("Upload failed, animation will simulate");
+      setProcessing(false); // Important: stop the loading animation on failure!
+      toast.error(e.message === "Failed to fetch" ? "Network error: Backend server may be offline." : "Upload failed. Please try again.");
     }
   };
 
@@ -221,8 +247,8 @@ export default function SubmissionPage() {
                   <Upload className={`h-6 w-6 ${dragOver ? "text-primary-foreground" : "text-muted-foreground"}`} />
                 </div>
                 <p className="text-sm font-semibold">Drop files here or click to browse</p>
-                <p className="text-xs text-muted-foreground mt-2">PDF, DOCX, TXT, images, code files up to 20MB</p>
-                <input id="file-input" type="file" multiple className="hidden" onChange={handleFileInput} />
+                <p className="text-xs text-muted-foreground mt-2">PDF files only · Max 20MB per file</p>
+                <input id="file-input" type="file" multiple accept="application/pdf,.pdf" className="hidden" onChange={handleFileInput} />
               </div>
 
               <AnimatePresence>

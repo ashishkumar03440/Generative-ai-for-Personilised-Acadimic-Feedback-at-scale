@@ -4,6 +4,7 @@ import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { CheckCircle, AlertTriangle, TrendingUp, BookOpen, ExternalLink, Sparkles, Award, Loader2, FileText } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { motion } from "framer-motion";
 import { useEffect, useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
@@ -36,6 +37,7 @@ const barColor = (pct: number) => pct >= 85 ? "[&>div]:bg-success" : pct >= 70 ?
 
 export default function FeedbackView() {
   const { user } = useAuth();
+  const [allFeedback, setAllFeedback] = useState<any[]>([]);
   const [feedbackData, setFeedbackData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
@@ -45,7 +47,8 @@ export default function FeedbackView() {
       .then(res => res.json())
       .then(data => {
         if (data.feedback && data.feedback.length > 0) {
-          setFeedbackData(data.feedback[0]); // Show the most recent one for now
+          setAllFeedback(data.feedback);
+          setFeedbackData(data.feedback[0]); // Show the most recent one by default
         }
         setLoading(false);
       })
@@ -109,6 +112,39 @@ export default function FeedbackView() {
   return (
     <DashboardLayout>
       <div className="max-w-4xl mx-auto space-y-6">
+        {/* Assignment Selector Dropdown */}
+        {allFeedback.length >= 1 && (
+          <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} className="flex flex-col sm:flex-row sm:items-center justify-between bg-card/50 backdrop-blur-md p-4 rounded-2xl border neon-border shadow-sm gap-4">
+            <div className="flex items-center gap-2">
+              <h3 className="font-display font-medium text-foreground flex items-center gap-2">
+                <FileText className="h-5 w-5 text-primary" />
+                View Feedback For:
+              </h3>
+              <span className="text-xs text-muted-foreground bg-secondary px-2 py-0.5 rounded-full">
+                {allFeedback.length} assignment{allFeedback.length !== 1 ? "s" : ""}
+              </span>
+            </div>
+            <Select
+              value={feedbackData?._id}
+              onValueChange={(val) => {
+                const selected = allFeedback.find(f => f._id === val);
+                if (selected) setFeedbackData(selected);
+              }}
+            >
+              <SelectTrigger className="w-full sm:w-[380px] bg-background">
+                <SelectValue placeholder="Select assignment" />
+              </SelectTrigger>
+              <SelectContent>
+                {allFeedback.map((f, idx) => (
+                  <SelectItem key={f._id} value={f._id}>
+                    {f.assignmentId?.title || `Assignment ${idx + 1}`} — {new Date(f.createdAt).toLocaleDateString()}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </motion.div>
+        )}
+
         {/* Score Hero */}
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}
           className="relative overflow-hidden rounded-2xl gradient-hero p-8 neon-border">

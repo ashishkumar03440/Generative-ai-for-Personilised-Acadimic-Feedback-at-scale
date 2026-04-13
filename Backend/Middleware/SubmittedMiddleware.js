@@ -21,8 +21,23 @@ const storage = multer.diskStorage({
     }
 });
 
-// Initialize upload using multer
-exports.upload = multer({ storage: storage });
+// PDF-only file filter
+const pdfFilter = (req, file, cb) => {
+    console.log("[PdfFilter] Incoming file:", file.originalname, "| Mimetype:", file.mimetype);
+    if (file.mimetype === 'application/pdf') {
+        cb(null, true);
+    } else {
+        console.error("[PdfFilter] Rejected:", file.mimetype);
+        cb(new Error(`Rejected file. Expected application/pdf, but received: ${file.mimetype}`), false);
+    }
+};
+
+// Initialize upload using multer — PDF only, max 20MB
+exports.upload = multer({ 
+    storage: storage,
+    fileFilter: pdfFilter,
+    limits: { fileSize: 20 * 1024 * 1024 } // 20MB
+});
 
 // Create a new Submission
 exports.uploadSubmission = async (req, res) => {
@@ -44,8 +59,86 @@ exports.uploadSubmission = async (req, res) => {
 
         const newSubmission = await Submitted.create(newSubmissionData);
 
+        // --- NEW: Asynchronous AI Feedback Generation ---
+        // Run completely independently so the user experiences zero lag upon upload
+        (async () => {
+            try {
+                const pdfParse = require("pdf-parse");
+                // Dynamically import ESM agent bundle within this CJS file
+                const { generateAcademicFeedback } = await import("../agents/index.js");
+                const Feedback = require("../Models/Feedback");
+
+                // Safely extract text based on extension
+                let extractedText = "";
+                const ext = path.extname(req.file.originalname).toLowerCase();
+                
+                if (ext === '.pdf') {
+                    try {
+                        const dataBuffer = fs.readFileSync(req.file.path);
+                        // Use lenient options: { max: 0 } parses all pages;
+                        // normalizeWhitespace cleans up spacing issues in some PDFs
+                        const pdfData = await pdfParse(dataBuffer, {
+                            max: 0,
+                            normalizeWhitespace: true,
+                        });
+                        extractedText = pdfData.text;
+                    } catch (pdfErr) {
+                        // pdf-parse throws on malformed XRef tables, encrypted PDFs, etc.
+                        // Gracefully fall back so the AI pipeline still runs
+                        console.warn(`[PDF Parse Warning] Could not extract text from "${req.file.originalname}": ${pdfErr.message || pdfErr.details || pdfErr}`);
+                        extractedText = `(PDF text extraction failed for file "${req.file.originalname}". The file may be scanned, encrypted, or have a non-standard format. Please evaluate this submission based on the file name and any available context. Provide general academic feedback and encourage the student to resubmit a text-layer PDF if possible.)`;
+                    }
+                } else if (ext === '.txt' || ext === '.md' || ext === '.js') {
+                    extractedText = fs.readFileSync(req.file.path, 'utf8');
+                } else {
+                    extractedText = `(Warning: Unsupported format ${ext} for raw text extraction. Please evaluate this submission broadly based on general context. File name: ${req.file.originalname})`;
+                }
+
+                if (!extractedText.trim()) {
+                    extractedText = "(Empty submission or unparseable text)";
+                }
+
+                console.log(`[AI Triggered] Generating feedback for ${req.file.originalname}...`);
+                const aiResult = await generateAcademicFeedback(extractedText);
+
+                if (aiResult && aiResult.status === "success") {
+                    const metrics = aiResult.data.metrics;
+                    const feedbackData = aiResult.data.feedback;
+                    const learningPath = aiResult.data.learningPath;
+
+                    // Map the LangChain JSON directly into the Mongoose Schema expected by Frontend
+                    const newFeedback = new Feedback({
+                        studentId: studentId,
+                        assignmentId: assignmentId,
+                        score: metrics.accuracyScore || 0,
+                        maxScore: 100,
+                        strengths: feedbackData.whatWentWell ? [feedbackData.whatWentWell] : [],
+                        weaknesses: feedbackData.areasForImprovement ? [feedbackData.areasForImprovement] : [],
+                        suggestions: learningPath.personalizedLearningPath 
+                            ? learningPath.personalizedLearningPath.map(p => ({
+                                text: p.objective,
+                                chapter: p.action,
+                                link: ""
+                            }))
+                            : [],
+                        conceptMastery: [], 
+                        aiComment: (feedbackData.feedbackSummary || "") + "\n\n" + (feedbackData.actionableSteps ? feedbackData.actionableSteps.join("\\n") : "") + "\n\n" + (feedbackData.encouragingClosing || ""),
+                        rubric: []
+                    });
+                    
+                    await newFeedback.save();
+
+                    // Instantly update submission status to reviewed
+                    await Submitted.findByIdAndUpdate(newSubmission._id, { status: "reviewed" });
+                    console.log(`[AI Complete] Feedback saved to DB for ${req.file.originalname}. Status updated to reviewed.`);
+                }
+            } catch (aiErr) {
+                console.error("[AI Generation Error] Processing failed in background:", aiErr);
+            }
+        })();
+
         return res.status(201).json({
-            message: "Submission created successfully",
+            message: "Submission uploaded successfully. AI is currently analyzing your work in the background.",
             submission: newSubmission
         });
         

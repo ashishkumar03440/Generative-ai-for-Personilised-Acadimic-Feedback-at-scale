@@ -34,9 +34,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     localStorage.setItem("eduAi_user", JSON.stringify(userData));
   }, []);
 
-  const logout = useCallback(() => {
+  const logout = useCallback(async () => {
+    try {
+      // Tell the server to invalidate the refresh token and clear the HttpOnly cookie
+      await fetch("http://localhost:5000/user/logout", {
+        method: "POST",
+        credentials: "include",  // ← sends the HttpOnly cookie so server can clear it
+      });
+    } catch {
+      // Non-fatal — still clear client-side state
+    }
     setUser(null);
     localStorage.removeItem("eduAi_user");
+    sessionStorage.removeItem("accessToken");
   }, []);
 
   return (

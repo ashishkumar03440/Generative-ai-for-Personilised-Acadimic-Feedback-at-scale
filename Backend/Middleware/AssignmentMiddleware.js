@@ -20,8 +20,21 @@ const storage = multer.diskStorage({
     }
 });
 
-// Initialize upload using multer
-exports.upload = multer({ storage: storage });
+// PDF-only file filter
+const pdfFilter = (req, file, cb) => {
+    if (file.mimetype === 'application/pdf') {
+        cb(null, true);
+    } else {
+        cb(new Error('Only PDF files are accepted. Please convert your file to PDF before uploading.'), false);
+    }
+};
+
+// Initialize upload using multer — PDF only, max 20MB limit
+exports.upload = multer({ 
+    storage: storage,
+    fileFilter: pdfFilter,
+    limits: { fileSize: 20 * 1024 * 1024 } // 20 MB limit
+});
 
 // Create a new Assignment
 exports.createAssignment = async (req, res) => {

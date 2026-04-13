@@ -50,6 +50,7 @@ export default function LoginPage() {
       headers: {
         "Content-Type": "application/json",
       },
+      credentials: "include",   // ← REQUIRED: tells browser to send/receive cookies
       body: JSON.stringify(bodyData),
     });
 
@@ -60,8 +61,11 @@ export default function LoginPage() {
         alert("Account created successfully! Please sign in.");
         setTab("login");
       } else {
-        console.log("Token:", data.token);
-        localStorage.setItem("token", data.token);
+        // Store access token in sessionStorage (clears on tab close, safer than localStorage)
+        // The HttpOnly refresh cookie was set automatically by the server
+        const accessToken = data.accessToken || data.token; // support old + new backend shape
+        console.log("Login success. Role:", data.user?.role);
+        if (accessToken) sessionStorage.setItem("accessToken", accessToken);
         login(data.user);
         navigate(`/${selectedRole}`);
       }
