@@ -22,14 +22,17 @@ const FeedbackRoutes   = require("./Routes/FeedbackRoutes.js");
 // ─── CORS ─────────────────────────────────────────────────────────────────────
 // `credentials: true` is required so the browser sends/receives cookies.
 // In production, FRONTEND_URL must be set to your deployed frontend origin.
-const allowedOrigins = (process.env.FRONTEND_URL || "http://localhost:5173").split(",").map(o => o.trim());
+const rawFrontendUrl = process.env.FRONTEND_URL || "http://localhost:5173";
+// Clean up the URL by removing trailing slashes which cause CORS matching failures
+const allowedOrigins = rawFrontendUrl.split(",").map(o => o.trim().replace(/\/$/, ""));
 
 const corsOptions = {
     origin: (origin, callback) => {
         // Allow requests with no origin (mobile apps, curl, Postman) or matching allowed origins
-        if (!origin || allowedOrigins.includes(origin)) {
+        if (!origin || allowedOrigins.includes(origin.replace(/\/$/, ""))) {
             callback(null, true);
         } else {
+            console.warn(`[CORS Blocked] Origin: ${origin} not in allowed list:`, allowedOrigins);
             callback(new Error(`CORS: Origin '${origin}' not allowed.`));
         }
     },
