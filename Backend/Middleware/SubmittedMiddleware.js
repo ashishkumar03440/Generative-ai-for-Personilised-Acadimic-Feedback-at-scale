@@ -59,81 +59,146 @@ exports.uploadSubmission = async (req, res) => {
 
         const newSubmission = await Submitted.create(newSubmissionData);
 
-        // --- NEW: Asynchronous AI Feedback Generation ---
-        // Run completely independently so the user experiences zero lag upon upload
+        // ── Async AI Feedback Generation ──────────────────────────────────────
+        // Run completely independently so the user experiences zero lag upon upload.
+        // Retries the full pipeline up to 3 times with a 5-second delay between
+        // attempts to handle transient Gemini API errors (rate limits, timeouts, etc.).
         (async () => {
-            try {
-                const pdfParse = require("pdf-parse");
-                // Dynamically import ESM agent bundle within this CJS file
+            const MAX_PIPELINE_ATTEMPTS = 3;
+            const RETRY_DELAY_MS = 5000;
+            const PIPELINE_TIMEOUT_MS = 5 * 60 * 1000; // 5-minute hard timeout
+
+            for (let pipelineAttempt = 1; pipelineAttempt <= MAX_PIPELINE_ATTEMPTS; pipelineAttempt++) {
+                try {
+                    console.log(`[AI Pipeline] 🔄 Attempt ${pipelineAttempt}/${MAX_PIPELINE_ATTEMPTS} for: ${req.file.originalname}`);
+
+                    // Wrap the entire pipeline in a timeout promise
+                    await Promise.race([
+                        runPipeline(),
+                        new Promise((_, reject) =>
+                            setTimeout(() => reject(new Error(`Pipeline timed out after ${PIPELINE_TIMEOUT_MS / 1000}s`)), PIPELINE_TIMEOUT_MS)
+                        )
+                    ]);
+
+                    console.log(`[AI Pipeline] ✅ Pipeline completed successfully on attempt ${pipelineAttempt} for: ${req.file.originalname}`);
+                    break; // Success — stop retrying
+
+                } catch (pipelineErr) {
+                    console.error(`[AI Pipeline] ❌ Attempt ${pipelineAttempt}/${MAX_PIPELINE_ATTEMPTS} failed for "${req.file.originalname}": ${pipelineErr.message}`);
+
+                    if (pipelineAttempt < MAX_PIPELINE_ATTEMPTS) {
+                        console.warn(`[AI Pipeline] ⏳ Retrying in ${RETRY_DELAY_MS / 1000}s...`);
+                        await new Promise(resolve => setTimeout(resolve, RETRY_DELAY_MS));
+                    } else {
+                        console.error(`[AI Pipeline] 💀 All ${MAX_PIPELINE_ATTEMPTS} attempts exhausted for "${req.file.originalname}". Feedback could not be generated.`);
+                        // Mark submission with a failed status so it's visible in admin dashboard
+                        await Submitted.findByIdAndUpdate(newSubmission._id, { status: "pending" }).catch(() => {});
+                    }
+                }
+            }
+
+            // ── Inner pipeline logic (extracted for clean retry wrapping) ──────
+            async function runPipeline() {
+                // Dynamically import ESM modules within this CJS file
+                const { extractTextFromPDF } = await import("../agents/ocr.js");
                 const { generateAcademicFeedback } = await import("../agents/index.js");
                 const Feedback = require("../Models/Feedback");
 
-                // Safely extract text based on extension
+                // ── Step 1: Extract student submission text via smart OCR ─────────
+                // extractTextFromPDF tries pdf-parse first (fast for digital PDFs),
+                // then escalates to Gemini vision for handwritten/scanned PDFs.
+                console.log(`[AI Pipeline] 📄 Extracting text from student PDF: ${req.file.originalname}`);
                 let extractedText = "";
+
                 const ext = path.extname(req.file.originalname).toLowerCase();
-                
-                if (ext === '.pdf') {
-                    try {
-                        const dataBuffer = fs.readFileSync(req.file.path);
-                        // Use lenient options: { max: 0 } parses all pages;
-                        // normalizeWhitespace cleans up spacing issues in some PDFs
-                        const pdfData = await pdfParse(dataBuffer, {
-                            max: 0,
-                            normalizeWhitespace: true,
-                        });
-                        extractedText = pdfData.text;
-                    } catch (pdfErr) {
-                        // pdf-parse throws on malformed XRef tables, encrypted PDFs, etc.
-                        // Gracefully fall back so the AI pipeline still runs
-                        console.warn(`[PDF Parse Warning] Could not extract text from "${req.file.originalname}": ${pdfErr.message || pdfErr.details || pdfErr}`);
-                        extractedText = `(PDF text extraction failed for file "${req.file.originalname}". The file may be scanned, encrypted, or have a non-standard format. Please evaluate this submission based on the file name and any available context. Provide general academic feedback and encourage the student to resubmit a text-layer PDF if possible.)`;
-                    }
-                } else if (ext === '.txt' || ext === '.md' || ext === '.js') {
-                    extractedText = fs.readFileSync(req.file.path, 'utf8');
+
+                if (ext === ".pdf") {
+                    extractedText = await extractTextFromPDF(req.file.path, "student");
+                } else if (ext === ".txt" || ext === ".md" || ext === ".js") {
+                    extractedText = fs.readFileSync(req.file.path, "utf8");
                 } else {
-                    extractedText = `(Warning: Unsupported format ${ext} for raw text extraction. Please evaluate this submission broadly based on general context. File name: ${req.file.originalname})`;
+                    extractedText = `(Warning: Unsupported format ${ext}. File name: ${req.file.originalname})`;
                 }
 
-                if (!extractedText.trim()) {
-                    extractedText = "(Empty submission or unparseable text)";
+                if (!extractedText || !extractedText.trim()) {
+                    extractedText = "(Empty submission or unparseable content — please evaluate generically)";
                 }
 
-                console.log(`[AI Triggered] Generating feedback for ${req.file.originalname}...`);
-                const aiResult = await generateAcademicFeedback(extractedText);
+                // ── Step 2: Fetch teacher context (OCR text from assignment PDF) ──
+                // This allows the AI to compare student answers to the actual questions.
+                let teacherContext = "";
+                if (assignmentId) {
+                    try {
+                        const assignment = await Assignment.findById(assignmentId).select("teacherOcrText title description");
+                        if (assignment) {
+                            // Use pre-extracted OCR text if available
+                            if (assignment.teacherOcrText && assignment.teacherOcrText.trim()) {
+                                teacherContext = assignment.teacherOcrText;
+                                console.log(`[AI Pipeline] ✅ Teacher context loaded from DB (${teacherContext.length} chars).`);
+                            } else if (assignment.filePath) {
+                                // OCR hasn't finished yet (race condition on fresh upload) — OCR it now
+                                console.log(`[AI Pipeline] ⚠️  Teacher OCR not in DB yet. Running OCR on assignment PDF now.`);
+                                const assignmentPdfPath = path.join(__dirname, "../", assignment.filePath);
+                                if (fs.existsSync(assignmentPdfPath)) {
+                                    teacherContext = await extractTextFromPDF(assignmentPdfPath, "teacher");
+                                    // Save it to DB for next time
+                                    await Assignment.findByIdAndUpdate(assignmentId, { teacherOcrText: teacherContext });
+                                }
+                            }
 
-                if (aiResult && aiResult.status === "success") {
-                    const metrics = aiResult.data.metrics;
-                    const feedbackData = aiResult.data.feedback;
-                    const learningPath = aiResult.data.learningPath;
-
-                    // Map the LangChain JSON directly into the Mongoose Schema expected by Frontend
-                    const newFeedback = new Feedback({
-                        studentId: studentId,
-                        assignmentId: assignmentId,
-                        score: metrics.accuracyScore || 0,
-                        maxScore: 100,
-                        strengths: feedbackData.whatWentWell ? [feedbackData.whatWentWell] : [],
-                        weaknesses: feedbackData.areasForImprovement ? [feedbackData.areasForImprovement] : [],
-                        suggestions: learningPath.personalizedLearningPath 
-                            ? learningPath.personalizedLearningPath.map(p => ({
-                                text: p.objective,
-                                chapter: p.action,
-                                link: ""
-                            }))
-                            : [],
-                        conceptMastery: [], 
-                        aiComment: (feedbackData.feedbackSummary || "") + "\n\n" + (feedbackData.actionableSteps ? feedbackData.actionableSteps.join("\\n") : "") + "\n\n" + (feedbackData.encouragingClosing || ""),
-                        rubric: []
-                    });
-                    
-                    await newFeedback.save();
-
-                    // Instantly update submission status to reviewed
-                    await Submitted.findByIdAndUpdate(newSubmission._id, { status: "reviewed" });
-                    console.log(`[AI Complete] Feedback saved to DB for ${req.file.originalname}. Status updated to reviewed.`);
+                            // Always append the text description from DB as a fallback supplement
+                            if (assignment.description && !teacherContext.includes(assignment.description)) {
+                                teacherContext = `Assignment: ${assignment.title}\nDescription: ${assignment.description}\n\n${teacherContext}`;
+                            }
+                        }
+                    } catch (ctxErr) {
+                        console.warn(`[AI Pipeline] ⚠️  Could not fetch teacher context: ${ctxErr.message}`);
+                        // Don't throw — teacher context is optional, proceed without it
+                    }
                 }
-            } catch (aiErr) {
-                console.error("[AI Generation Error] Processing failed in background:", aiErr);
+
+                // ── Step 3: Run the multi-agent AI pipeline ───────────────────────
+                console.log(`[AI Pipeline] 🚀 Triggering feedback pipeline for: ${req.file.originalname}`);
+                const aiResult = await generateAcademicFeedback(extractedText, teacherContext);
+
+                if (!aiResult || aiResult.status !== "success") {
+                    throw new Error(`Pipeline returned non-success status: ${JSON.stringify(aiResult?.status)}`);
+                }
+
+                const metrics = aiResult.data.metrics;
+                const feedbackData = aiResult.data.feedback;
+                const learningPath = aiResult.data.learningPath;
+
+                // Map the LangChain JSON directly into the Mongoose Schema expected by Frontend
+                const newFeedback = new Feedback({
+                    studentId: studentId,
+                    assignmentId: assignmentId,
+                    score: metrics.accuracyScore || 0,
+                    maxScore: 100,
+                    strengths: feedbackData.whatWentWell ? [feedbackData.whatWentWell] : [],
+                    weaknesses: feedbackData.areasForImprovement ? [feedbackData.areasForImprovement] : [],
+                    suggestions: learningPath.personalizedLearningPath 
+                        ? learningPath.personalizedLearningPath.map(p => ({
+                            text: p.objective,
+                            chapter: p.action,
+                            link: ""
+                        }))
+                        : [],
+                    conceptMastery: [], 
+                    aiComment: [
+                        feedbackData.feedbackSummary || "",
+                        feedbackData.actionableSteps ? feedbackData.actionableSteps.join("\n") : "",
+                        feedbackData.encouragingClosing || "",
+                        metrics.gradedAgainstAssignment ? "\n\n✅ This feedback was generated by comparing your answers to the actual assignment questions." : ""
+                    ].filter(Boolean).join("\n\n"),
+                    rubric: []
+                });
+                
+                await newFeedback.save();
+
+                // Update submission status to reviewed
+                await Submitted.findByIdAndUpdate(newSubmission._id, { status: "reviewed" });
+                console.log(`[AI Pipeline] ✅ Feedback saved to DB for ${req.file.originalname}. Graded against assignment: ${metrics.gradedAgainstAssignment}`);
             }
         })();
 

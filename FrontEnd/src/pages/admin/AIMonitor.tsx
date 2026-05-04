@@ -5,6 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Activity, CheckCircle, AlertTriangle, XCircle, Cpu } from "lucide-react";
 import { motion } from "framer-motion";
+import { API_BASE, authFetch } from "@/lib/api";
 
 const models = [
   { name: "Gemini (Grading)", usage: 78, latency: "1.2s" },
@@ -25,7 +26,7 @@ export default function AIMonitor() {
   const [pendingCount, setPendingCount] = useState<number | null>(null);
 
   useEffect(() => {
-    fetch("http://localhost:5000/admin/stats")
+    authFetch(`${API_BASE}/admin/stats`)
       .then(res => res.json())
       .then(data => setPendingCount(data.pendingCount ?? 0))
       .catch(console.error);

@@ -21,9 +21,18 @@ const FeedbackRoutes   = require("./Routes/FeedbackRoutes.js");
 
 // ─── CORS ─────────────────────────────────────────────────────────────────────
 // `credentials: true` is required so the browser sends/receives cookies.
-const corsOptions = {
-    origin: true, // Allow all origins for dev proxying
+// In production, FRONTEND_URL must be set to your deployed frontend origin.
+const allowedOrigins = (process.env.FRONTEND_URL || "http://localhost:5173").split(",").map(o => o.trim());
 
+const corsOptions = {
+    origin: (origin, callback) => {
+        // Allow requests with no origin (mobile apps, curl, Postman) or matching allowed origins
+        if (!origin || allowedOrigins.includes(origin)) {
+            callback(null, true);
+        } else {
+            callback(new Error(`CORS: Origin '${origin}' not allowed.`));
+        }
+    },
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization"],
     credentials: true,   // ← critical for cookies
@@ -53,7 +62,7 @@ app.use((req, res, next) => {
 });
 
 // ─── Routes ───────────────────────────────────────────────────────────────────
-app.get("/", (req, res) => res.json({ status: "OK", env: process.env.NODE_ENV }));
+app.get("/", (req, res) => res.json({ status: "OK" }));
 
 app.use("/user",       UserRoutes);
 app.use("/teacher",    TeacherRoutes);
@@ -70,10 +79,22 @@ app.use((req, res) => {
 // ─── Global error handler ─────────────────────────────────────────────────────
 app.use((err, req, res, next) => {
     console.error("[Unhandled Error]", err);
-    res.status(500).json({ message: "Internal server error.", error: err.message });
+    // Never expose internal error details to the client in production
+    const message = isProduction ? "Internal server error." : err.message;
+    res.status(err.status || 500).json({ message });
 });
 
 // ─── Start ────────────────────────────────────────────────────────────────────
 app.listen(PORT, () => {
     console.log(`✅  Server running on port ${PORT} [${process.env.NODE_ENV}]`);
+});
+
+// ─── Global crash guards ──────────────────────────────────────────────────────
+// Prevents the entire Node process from dying on unhandled async errors.
+process.on("uncaughtException", (err) => {
+    console.error("[uncaughtException] Unhandled error (server still running):", err);
+});
+
+process.on("unhandledRejection", (reason) => {
+    console.error("[unhandledRejection] Unhandled promise rejection (server still running):", reason);
 });

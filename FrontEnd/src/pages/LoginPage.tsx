@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { API_BASE } from "@/lib/api";
 import { useAuth, UserRole } from "@/contexts/AuthContext";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
@@ -45,7 +46,7 @@ export default function LoginPage() {
       bodyData.institution = "65b9e8432a1f812b1d7d2c3e"; // Dummy valid MongoDB ObjectId for DB constraints
     }
 
-    const res = await fetch(`http://localhost:5000/${endpoint}/${routeAction}`, {
+    const res = await fetch(`${API_BASE}/${endpoint}/${routeAction}`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",

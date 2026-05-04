@@ -8,6 +8,7 @@ import { useNavigate } from "react-router-dom";
 import { useEffect, useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
+import { API_BASE, authFetch } from "@/lib/api";
 
 interface RubricItem { id: string; criteria: string; maxScore: number; description: string; }
 interface Assignment {
@@ -50,7 +51,7 @@ function AssignmentCard({ a, index, isSubmitted }: { a: Assignment; index: numbe
           {a.filePath && (
             <Button size="sm" variant="secondary" className="mr-2" onClick={(e) => {
               e.stopPropagation(); // prevent navigating
-              window.open(`http://localhost:5000/assignment/download/${a._id}`, '_blank');
+              window.open(`${API_BASE}/assignment/download/${a._id}`, '_blank');
             }}>
               <Download className="h-4 w-4 mr-1"/> Download
             </Button>
@@ -78,7 +79,7 @@ export default function AssignmentList() {
 
   useEffect(() => {
     // Fetch all assignments
-    fetch("http://localhost:5000/assignment/list")
+    authFetch(`${API_BASE}/assignment/list`)
       .then(res => res.json())
       .then(data => {
         if (data.assignments) {
@@ -88,7 +89,7 @@ export default function AssignmentList() {
       .catch(console.error);
 
     // Fetch this user's submissions
-    fetch("http://localhost:5000/submitted/list")
+    authFetch(`${API_BASE}/submitted/list`)
       .then(res => res.json())
       .then(data => {
         if (data.submissions) {

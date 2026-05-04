@@ -8,6 +8,7 @@ import { FileText, Clock, Users, CheckCircle, ThumbsUp, ThumbsDown, Plus, ArrowR
 import { motion } from "framer-motion";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
+import { API_BASE, authFetch } from "@/lib/api";
 
 const priorityColors: Record<string, string> = {
   high: "bg-destructive/15 text-destructive border-destructive/20",
@@ -22,13 +23,13 @@ export default function TeacherDashboard() {
   const [submissions, setSubmissions] = useState<any[]>([]);
 
   const fetchSubmissions = () =>
-    fetch("http://localhost:5000/submitted/list")
+    authFetch(`${API_BASE}/submitted/list`)
       .then(res => res.json())
       .then(data => { if (data.submissions) setSubmissions(data.submissions); })
       .catch(console.error);
 
   useEffect(() => {
-    fetch("http://localhost:5000/assignment/list")
+    authFetch(`${API_BASE}/assignment/list`)
       .then(res => res.json())
       .then(data => { if (data.assignments) setAssignments(data.assignments); })
       .catch(console.error);
@@ -67,7 +68,7 @@ export default function TeacherDashboard() {
     try {
       await Promise.all(
         selected.map(id =>
-          fetch(`http://localhost:5000/submitted/${id}/status`, {
+          authFetch(`${API_BASE}/submitted/${id}/status`, {
             method: "PATCH",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ status }),

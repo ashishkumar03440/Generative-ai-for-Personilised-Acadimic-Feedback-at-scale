@@ -16,6 +16,13 @@ import { getVectorStore } from "./vectorStore.js";
  * @returns {Promise<string>} - A concatenated string of the retrieved contexts ready for prompt injection.
  */
 export const retrieveContext = async (query, options = {}) => {
+    // Guard: skip RAG entirely if Pinecone is not configured.
+    // This lets the system work without Pinecone — agents fall back to their frozen knowledge.
+    if (!process.env.PINECONE_API_KEY || !process.env.PINECONE_INDEX_NAME) {
+        console.warn("[Retriever] PINECONE_API_KEY or PINECONE_INDEX_NAME not set. Skipping RAG retrieval — agents will use built-in knowledge.");
+        return "No vector database configured. Analyze the student submission strictly based on general academic knowledge of the subject domain.";
+    }
+
     try {
         const k = options.k || 3;
         const filter = options.filter || {};
@@ -42,7 +49,7 @@ export const retrieveContext = async (query, options = {}) => {
         return formattedContext;
         
     } catch (error) {
-        console.error("[Retriever Error] Failed to fetch documents from vector store:", error);
+        console.error("[Retriever Error] Failed to fetch documents from vector store:", error.message);
         // Fallback: Rather than breaking the entire AI pipeline, pass an empty context
         // and let the Analyzer LLM rely on its frozen knowledge base.
         return "Warning: Context retrieval failed. Analyze the submission strictly based on general factual correctness.";

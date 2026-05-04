@@ -4,6 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Users, Activity, FileText, Clock, CheckCircle, BookOpen, Loader2 } from "lucide-react";
 import { motion } from "framer-motion";
 import { Area, AreaChart, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
+import { API_BASE, authFetch } from "@/lib/api";
 
 interface Stats {
   totalUsers: number;
@@ -23,7 +24,7 @@ export default function AdminDashboard() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetch("http://localhost:5000/admin/stats")
+    authFetch(`${API_BASE}/admin/stats`)
       .then(res => res.json())
       .then(data => { setStats(data); setLoading(false); })
       .catch(err => { console.error(err); setLoading(false); });

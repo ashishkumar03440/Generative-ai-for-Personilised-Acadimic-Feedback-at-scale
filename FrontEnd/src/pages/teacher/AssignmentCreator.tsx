@@ -9,6 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Plus, X, GripVertical, Sparkles, FileText } from "lucide-react";
 import { toast } from "sonner";
 import { motion, AnimatePresence } from "framer-motion";
+import { API_BASE, authFetch } from "@/lib/api";
 
 interface RubricItem { id: string; criteria: string; maxScore: number; description: string; }
 
@@ -43,7 +44,7 @@ export default function AssignmentCreator() {
         formData.append("file", file);
       }
 
-      const res = await fetch("http://localhost:5000/assignment/create", {
+      const res = await authFetch(`${API_BASE}/assignment/create`, {
         method: "POST",
         body: formData,
       });

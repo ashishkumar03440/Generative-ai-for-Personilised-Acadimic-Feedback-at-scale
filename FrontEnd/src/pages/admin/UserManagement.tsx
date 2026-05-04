@@ -9,6 +9,7 @@ import { Search, UserPlus, Users, Trash2, Loader2 } from "lucide-react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { toast } from "sonner";
 import { motion } from "framer-motion";
+import { API_BASE, authFetch } from "@/lib/api";
 
 interface UserEntry {
   id: string;
@@ -43,7 +44,7 @@ export default function UserManagement() {
 
   const fetchUsers = () => {
     setLoading(true);
-    fetch("http://localhost:5000/admin/users")
+    authFetch(`${API_BASE}/admin/users`)
       .then(res => res.json())
       .then(data => { setUsers(data.users || []); setLoading(false); })
       .catch(err => { console.error(err); setLoading(false); });
@@ -63,7 +64,7 @@ export default function UserManagement() {
     if (!confirm(`Delete ${user.name}? This cannot be undone.`)) return;
     setDeletingId(user.id);
     try {
-      const res = await fetch(`http://localhost:5000/admin/users/${user.role}/${user.id}`, {
+      const res = await authFetch(`${API_BASE}/admin/users/${user.role}/${user.id}`, {
         method: "DELETE",
       });
       if (res.ok) {

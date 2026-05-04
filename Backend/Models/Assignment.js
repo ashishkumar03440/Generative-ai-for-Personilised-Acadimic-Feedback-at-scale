@@ -38,6 +38,13 @@ const assignmentSchema = new mongoose.Schema({
         type: mongoose.Schema.Types.ObjectId,
         ref: "Teacher",
         required: false // Optional for now since we aren't fully enforcing auth tokens yet, but good practice
+    },
+    // Stores OCR-extracted text from the teacher's uploaded assignment PDF.
+    // Populated asynchronously after upload via Gemini multimodal OCR.
+    // Used to provide question context to the AI grading pipeline.
+    teacherOcrText: {
+        type: String,
+        default: null
     }
 }, { timestamps: true });
 

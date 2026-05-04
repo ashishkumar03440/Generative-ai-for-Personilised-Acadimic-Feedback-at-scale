@@ -9,6 +9,7 @@ import { toast } from "sonner";
 import { motion, AnimatePresence } from "framer-motion";
 import { useAuth } from "@/contexts/AuthContext";
 import { useSearchParams, useNavigate } from "react-router-dom";
+import { API_BASE, authFetch } from "@/lib/api";
 
 const DEFAULT_RUBRIC = [
   { criteria: "Thesis & Argument", score: 85, suggestion: "Evaluate the clarity and strength of the main argument" },
@@ -40,7 +41,7 @@ export default function ReviewEditor() {
   // Load all pending submissions for navigation
   const loadAllPending = useCallback(async () => {
     try {
-      const res = await fetch("http://localhost:5000/submitted/list");
+      const res = await authFetch(`${API_BASE}/submitted/list`);
       const data = await res.json();
       const pending: any[] = (data.submissions || []).filter(
         (s: any) => s.status !== "reviewed" && s.status !== "rejected"
@@ -59,7 +60,7 @@ export default function ReviewEditor() {
     setComment("");
     try {
       // Fetch full populated submission
-      const res = await fetch(`http://localhost:5000/submitted/${sub._id}`);
+      const res = await authFetch(`${API_BASE}/submitted/${sub._id}`);
       const data = await res.json();
       const full = data.submission || sub;
       setSubmission(full);
@@ -119,7 +120,7 @@ export default function ReviewEditor() {
   const handleReject = async () => {
     if (!submission) return;
     try {
-      const res = await fetch(`http://localhost:5000/submitted/${submission._id}/status`, {
+      const res = await authFetch(`${API_BASE}/submitted/${submission._id}/status`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ status: "rejected" }),
@@ -179,7 +180,7 @@ export default function ReviewEditor() {
     };
 
     try {
-      const res = await fetch("http://localhost:5000/feedback/submit", {
+      const res = await authFetch(`${API_BASE}/feedback/submit`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
@@ -210,7 +211,7 @@ export default function ReviewEditor() {
   const avg = Math.round(scores.reduce((a, b) => a + b, 0) / scores.length);
   const displayStudent = submission?.studentName || "—";
   const displayAssignment = submission?.assignmentId?.title || "—";
-  const fileDownloadUrl = submission ? `http://localhost:5000/submitted/download/${submission._id}` : "#";
+  const fileDownloadUrl = submission ? `${API_BASE}/submitted/download/${submission._id}` : "#";
 
   return (
     <DashboardLayout>

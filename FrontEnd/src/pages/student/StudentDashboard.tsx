@@ -6,6 +6,7 @@ import { motion } from "framer-motion";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { useEffect, useState } from "react";
+import { API_BASE, authFetch } from "@/lib/api";
 
 interface Assignment {
   _id: string;
@@ -30,7 +31,7 @@ export default function StudentDashboard() {
   const [feedbackData, setFeedbackData] = useState<any[]>([]);
 
   useEffect(() => {
-    fetch("http://localhost:5000/assignment/list")
+    authFetch(`${API_BASE}/assignment/list`)
       .then(res => res.json())
       .then(data => {
         if (data.assignments) {
@@ -39,7 +40,7 @@ export default function StudentDashboard() {
       })
       .catch(console.error);
 
-    fetch("http://localhost:5000/submitted/list")
+    authFetch(`${API_BASE}/submitted/list`)
       .then(res => res.json())
       .then(data => {
         if (data.submissions) {
@@ -49,7 +50,7 @@ export default function StudentDashboard() {
       .catch(console.error);
 
     if (user?.id) {
-      fetch(`http://localhost:5000/feedback/student?studentId=${user.id}`)
+      authFetch(`${API_BASE}/feedback/student?studentId=${user.id}`)
         .then(res => res.json())
         .then(data => {
           if (data.feedback) {

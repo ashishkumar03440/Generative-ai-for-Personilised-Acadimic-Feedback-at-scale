@@ -8,6 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { motion } from "framer-motion";
 import { useEffect, useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
+import { API_BASE, authFetch } from "@/lib/api";
 
 const mockTemplate = {
   score: 8.5, maxScore: 10,
@@ -43,7 +44,7 @@ export default function FeedbackView() {
 
   useEffect(() => {
     if (!user?.id) return;
-    fetch(`http://localhost:5000/feedback/student?studentId=${user.id}`)
+    authFetch(`${API_BASE}/feedback/student?studentId=${user.id}`)
       .then(res => res.json())
       .then(data => {
         if (data.feedback && data.feedback.length > 0) {

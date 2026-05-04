@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useCallback } from "react";
+import { API_BASE } from "@/lib/api";
 
 export type UserRole = "student" | "teacher" | "admin";
 
@@ -37,7 +38,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const logout = useCallback(async () => {
     try {
       // Tell the server to invalidate the refresh token and clear the HttpOnly cookie
-      await fetch("http://localhost:5000/user/logout", {
+      await fetch(`${API_BASE}/user/logout`, {
         method: "POST",
         credentials: "include",  // ← sends the HttpOnly cookie so server can clear it
       });

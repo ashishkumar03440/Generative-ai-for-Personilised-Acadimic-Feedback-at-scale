@@ -61,6 +61,29 @@ exports.createAssignment = async (req, res) => {
 
         const newAssignment = await Assignment.create(newAssignmentData);
 
+        // ── Async: OCR the teacher's assignment PDF in background ──────────────
+        // We do this asynchronously so the teacher doesn't wait — they get an
+        // instant 201 response, and the extracted text is stored a few seconds later.
+        if (req.file && path.extname(req.file.originalname).toLowerCase() === ".pdf") {
+            (async () => {
+                try {
+                    console.log(`[AssignmentOCR] 📄 Starting OCR on teacher PDF: ${req.file.originalname}`);
+                    const { extractTextFromPDF } = await import("../agents/ocr.js");
+                    const teacherOcrText = await extractTextFromPDF(req.file.path, "teacher");
+
+                    if (teacherOcrText && teacherOcrText.trim()) {
+                        await Assignment.findByIdAndUpdate(newAssignment._id, { teacherOcrText });
+                        console.log(`[AssignmentOCR] ✅ Teacher PDF OCR saved for assignment: "${title}" (${teacherOcrText.length} chars)`);
+                    } else {
+                        console.warn(`[AssignmentOCR] ⚠️  OCR returned empty text for teacher PDF: ${req.file.originalname}`);
+                    }
+                } catch (ocrErr) {
+                    // Non-fatal — assignment was already saved, OCR is best-effort
+                    console.error(`[AssignmentOCR] ❌ OCR failed for teacher PDF: ${ocrErr.message}`);
+                }
+            })();
+        }
+
         return res.status(201).json({
             message: "Assignment created successfully",
             assignment: newAssignment

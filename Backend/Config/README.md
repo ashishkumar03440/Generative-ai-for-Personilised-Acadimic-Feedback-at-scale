@@ -1,4 +1,4 @@
-# ⚙ Config — JWT & Authentication Configuration
+u# ⚙ Config — JWT & Authentication Configuration
 
 > **Location:** `Backend/Config/`  
 > **Purpose:** Centralized source of truth for all JWT token and cookie settings.

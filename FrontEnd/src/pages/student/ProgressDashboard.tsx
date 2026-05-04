@@ -5,6 +5,7 @@ import { TrendingUp, Award, FileText } from "lucide-react";
 import { motion } from "framer-motion";
 import { useEffect, useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
+import { API_BASE, authFetch } from "@/lib/api";
 
 const mockScoreData = [
   { month: "Sep", score: 72 }, { month: "Oct", score: 76 }, { month: "Nov", score: 80 },
@@ -18,7 +19,7 @@ export default function ProgressDashboard() {
   const [feedbackData, setFeedbackData] = useState<any[]>([]);
 
   useEffect(() => {
-    fetch("http://localhost:5000/assignment/list")
+    authFetch(`${API_BASE}/assignment/list`)
       .then(res => res.json())
       .then(data => {
         if (data.assignments) {
@@ -27,7 +28,7 @@ export default function ProgressDashboard() {
       })
       .catch(console.error);
 
-    fetch("http://localhost:5000/submitted/list")
+    authFetch(`${API_BASE}/submitted/list`)
       .then(res => res.json())
       .then(data => {
         if (data.submissions) {
@@ -37,7 +38,7 @@ export default function ProgressDashboard() {
       .catch(console.error);
 
     if (user?.id) {
-      fetch(`http://localhost:5000/feedback/student?studentId=${user.id}`)
+      authFetch(`${API_BASE}/feedback/student?studentId=${user.id}`)
         .then(res => res.json())
         .then(data => {
           if (data.feedback) {

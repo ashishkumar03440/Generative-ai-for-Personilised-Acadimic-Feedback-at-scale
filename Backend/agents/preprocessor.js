@@ -3,6 +3,8 @@
  * 
  * Preprocessor Agent Class
  * Cleans, translates, and structures raw student input before analysis.
+ * Now accepts optional teacher context (assignment questions) for
+ * question-aware preprocessing and intent extraction.
  */
 
 import { SystemMessage, HumanMessage } from "@langchain/core/messages";
@@ -17,7 +19,8 @@ export class PreprocessorAgent {
     /**
      * Executes the Preprocessor agent.
      * @param {Object} input
-     * @param {string} input.rawInput - The raw text/code/OCR from the user
+     * @param {string} input.rawInput - The raw text/code/OCR from the student (may include handwriting)
+     * @param {string} [input.teacherContext] - Optional OCR text from teacher's assignment PDF
      * @returns {Promise<Object>} The structured JSON output
      */
     async run(input) {
@@ -25,10 +28,19 @@ export class PreprocessorAgent {
             // Apply token efficiency by truncating overly massive inputs
             const safeInput = truncateText(input.rawInput, 8000);
 
-            // Construct the messages array
+            // Build teacher context section only when available
+            const teacherContextSection = input.teacherContext && input.teacherContext.trim()
+                ? `Teacher's Assignment Questions & Instructions (use this to understand what the student was asked):\n${truncateText(input.teacherContext, 3000)}\n`
+                : `(No teacher assignment context provided — evaluate the student's submission on its own merits.)`;
+
+            // Populate prompt template
+            const humanPrompt = PREPROCESSOR_HUMAN_PROMPT
+                .replace("{teacherContextSection}", teacherContextSection)
+                .replace("{rawInput}", safeInput);
+
             const messages = [
                 new SystemMessage(PREPROCESSOR_SYSTEM_PROMPT),
-                new HumanMessage(PREPROCESSOR_HUMAN_PROMPT.replace("{rawInput}", safeInput))
+                new HumanMessage(humanPrompt)
             ];
 
             // Wrap LLM invocation in the retry handler
