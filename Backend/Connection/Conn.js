@@ -1,5 +1,8 @@
 const mongoose = require("mongoose");
-mongoose.connect("mongodb://localhost:27017/myDatabase").then(()=>{
-    console.log("Connected to MongoDB");
-}).catch((err)=>{
-    console.log(err);})
+const uri = process.env.MONGO_URI || "mongodb://localhost:27017/myDatabase";
+
+mongoose.connect(uri).then(() => {
+    console.log("✅ Connected to MongoDB");
+}).catch((err) => {
+    console.error("❌ MongoDB Connection Error:", err);
+});
