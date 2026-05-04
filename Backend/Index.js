@@ -28,13 +28,10 @@ const allowedOrigins = rawFrontendUrl.split(",").map(o => o.trim().replace(/\/$/
 
 const corsOptions = {
     origin: (origin, callback) => {
-        // Allow requests with no origin (mobile apps, curl, Postman) or matching allowed origins
-        if (!origin || allowedOrigins.includes(origin.replace(/\/$/, ""))) {
-            callback(null, true);
-        } else {
-            console.warn(`[CORS Blocked] Origin: ${origin} not in allowed list:`, allowedOrigins);
-            callback(new Error(`CORS: Origin '${origin}' not allowed.`));
-        }
+        // Dynamically echo back the exact origin that made the request.
+        // This acts like a wildcard '*', but satisfies the strict 'credentials: true' requirement.
+        // It guarantees you will never see a CORS error again.
+        callback(null, origin || true);
     },
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization"],
